@@ -4,7 +4,6 @@ import re
 import tkinter as tk
 from tkinter import filedialog, scrolledtext, messagebox, ttk
 import threading
-import subprocess
 from moviepy import VideoFileClip, AudioFileClip
 
 # 原有处理逻辑封装为函数，支持日志回调
@@ -28,7 +27,7 @@ def process_folders(input_dict, output_dict, log_func=print, update_total=None):
         subfolder_path = os.path.join(input_dict, folder)
         if not os.path.isdir(subfolder_path):
             continue
-        log_func(f"[{idx+1}/{total}] 开始处理：{folder}")
+        log_func(f"[{idx+1}/{total}] 处理：{folder}")
         videoinfo_path = os.path.join(subfolder_path, '.videoinfo')
         video_title = folder
         if os.path.exists(videoinfo_path):
@@ -39,10 +38,10 @@ def process_folders(input_dict, output_dict, log_func=print, update_total=None):
                         video_title = info['title']
                         video_title = re.sub(r'[\\/:*?\"<>|]', '_', video_title)
             except Exception:
-                log_func(f"  读取 .videoinfo 失败，使用文件夹名作为标题")
+                pass
         m4s_files = [f for f in os.listdir(subfolder_path) if f.endswith('.m4s')]
         if len(m4s_files) < 2:
-            log_func(f"  跳过：m4s文件不足2个，实际数量：{len(m4s_files)}")
+            log_func(f"  跳过：m4s文件不足2个")
             continue
         m4s_paths = [os.path.join(subfolder_path, f) for f in m4s_files]
         tmp_files = []
@@ -54,11 +53,10 @@ def process_folders(input_dict, output_dict, log_func=print, update_total=None):
                 with open(tmp_path, 'wb') as f:
                     f.write(data)
                 tmp_files.append(tmp_path)
-                log_func(f"  已生成临时文件: {os.path.basename(tmp_path)}")
             except Exception as e:
-                log_func(f"  m4s转临时文件失败: {m4s_path}, 错误: {e}")
+                log_func(f"  跳过：m4s转临时文件失败")
         if len(tmp_files) < 2:
-            log_func(f"  临时文件不足，跳过: {tmp_files}")
+            log_func(f"  跳过：临时文件不足")
             continue
         # 尝试识别哪个是视频，哪个是音频
         video_file = audio_file = None
@@ -67,12 +65,10 @@ def process_folders(input_dict, output_dict, log_func=print, update_total=None):
                 clip = VideoFileClip(f)
                 clip.close()
                 video_file = f
-                log_func(f"  识别到视频文件: {os.path.basename(f)}")
             except Exception:
                 audio_file = f
-                log_func(f"  识别到音频文件: {os.path.basename(f)}")
         if not video_file or not audio_file:
-            log_func(f"  无法识别视频或音频文件: {tmp_files}")
+            log_func(f"  跳过：无法识别视频或音频文件")
             for p in tmp_files:
                 try:
                     os.remove(p)
@@ -80,23 +76,20 @@ def process_folders(input_dict, output_dict, log_func=print, update_total=None):
                     pass
             continue
         try:
-            log_func(f"  正在合成音视频...")
             video_clip = VideoFileClip(video_file)
             audio_clip = AudioFileClip(audio_file)
-            final_clip = video_clip.with_audio(audio_clip)
+            video_clip.audio = audio_clip
             output_path = os.path.join(output_dict, f"{video_title}.mp4")
-            final_clip.write_videofile(output_path, codec='libx264', audio_codec='aac')
+            video_clip.write_videofile(output_path, codec='libx264', audio_codec='aac')
             log_func(f"  合成成功: {output_path}")
             video_clip.close()
             audio_clip.close()
-            final_clip.close()
         except Exception as e:
-            log_func(f"  moviepy合成失败: {e}")
+            log_func(f"  合成失败: {e}")
         # 清理临时文件
         for p in tmp_files:
             try:
                 os.remove(p)
-                log_func(f"  已删除临时文件: {os.path.basename(p)}")
             except Exception:
                 pass
     if update_total:
